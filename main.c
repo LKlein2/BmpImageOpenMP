@@ -28,6 +28,12 @@ typedef struct rgb{
 	unsigned char red;
 } RGB;
 
+double horaAtual(void){
+     struct timeval tval;
+     gettimeofday(&tval, NULL);
+     return (tval.tv_sec + tval.tv_usec/1000000.0);
+}
+
 void lerArquivo(RGB** img, CABECALHO header, FILE *file)
 {
     int alinhamento;
@@ -86,12 +92,6 @@ int * ordenarVetor(int* array, int size) {
 	return array;
 }
 
-// double tempoCorrente(void){
-//      struct timeval tval;
-//      gettimeofday(&tval, NULL);
-//      return (tval.tv_sec + tval.tv_usec/1000000.0);
-// }
-
 /*
 MAIN ---------------------------------------------------------------------
 */
@@ -100,6 +100,7 @@ int main(int argc, char **argv ){
     CABECALHO header;
     RGB **imgIn, **imgOut, **imgFinal, **imgAux;
     int mascara, threads;
+	double tempoIni, tempoFim;
 
 	/*
     argc = 5;
@@ -174,6 +175,8 @@ int main(int argc, char **argv ){
 	int threadId, numThreads;
 	int posAltura, posLargura, posicaoArray; 
 	int i, j, k, l, temp, inicio, fim;
+
+	tempoIni = horaAtual();
 
 	//// Define a quantidade de threads
 	omp_set_num_threads(threads);
@@ -262,6 +265,9 @@ int main(int argc, char **argv ){
 		free(arrayG);
 		free(arrayB);
 	}
+
+	tempoFim = horaAtual();
+	printf("Tempo de execução: %f\n", tempoFim - tempoIni);
 	
 	escreverArquivo(imgOut, header, fileOut);
 

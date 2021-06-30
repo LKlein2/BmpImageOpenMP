@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <omp.h>
 #pragma pack(1)
 
 typedef struct cabecalho {
@@ -85,6 +86,12 @@ int * ordenarVetor(int* array, int size) {
 	return array;
 }
 
+// double tempoCorrente(void){
+//      struct timeval tval;
+//      gettimeofday(&tval, NULL);
+//      return (tval.tv_sec + tval.tv_usec/1000000.0);
+// }
+
 /*
 MAIN ---------------------------------------------------------------------
 */
@@ -92,15 +99,18 @@ int main(int argc, char **argv ){
     FILE *fileIn, *fileOut;
     CABECALHO header;
     RGB **imgIn, **imgOut, **imgFinal, **imgAux;
-    int mascara;
+    int mascara, threads;
 
-    argc = 4;
+	/*
+    argc = 5;
     argv[1] = "c:\\temp\\borboleta.bmp";
     argv[2] = "c:\\temp\\lixo.bmp";
     argv[3] = "7";
+	argv[4] = "4";
+	*/
 
     //Testa o numero de argumentos
-    if (argc != 4) {
+    if (argc != 5) {
 		printf("%s <img_entrada> <img_saida> <mascara> <Threads> \n", argv[0]);
 		exit(0);
 	}
@@ -126,6 +136,13 @@ int main(int argc, char **argv ){
 		exit(0);
     }
 
+	//Verifica o número de threads
+	threads = atoi(argv[4]);
+    if (threads < 1) {
+        printf("Número de threads deve ser maior ou igual a 1");
+		exit(0);
+    }
+
     //Lê o cabeçalho do arquivo de entrada
 	fread(&header, sizeof(CABECALHO), 1, fileIn);
 	fwrite(&header, sizeof(CABECALHO), 1, fileOut);
@@ -143,9 +160,9 @@ int main(int argc, char **argv ){
 	lerArquivo(imgIn, header, fileIn);
 
 	int sizeOfArray = (mascara * mascara);
-	int* arrayR = (int*)malloc(sizeOfArray * sizeof(int));
-	int* arrayG = (int*)malloc(sizeOfArray * sizeof(int));
-	int* arrayB = (int*)malloc(sizeOfArray * sizeof(int));
+	int* arrayR;
+	int* arrayG;
+	int* arrayB;
 
 	//Calcula o range
 	//Para mascara de 3: -1 até 1 então range = 1
@@ -154,46 +171,98 @@ int main(int argc, char **argv ){
 	int range = (mascara - 1) / 2;
 	int mediana = sizeOfArray / 2;	
 
-	for (int i = 0; i < header.altura; i++)
-	{
-		for (int j = 0; j < header.largura; j++)
+	int threadId, numThreads;
+	int posAltura, posLargura, posicaoArray; 
+	int i, j, k, l, temp, inicio, fim;
+
+	//// Define a quantidade de threads
+	omp_set_num_threads(threads);
+	#pragma omp parallel private (posAltura, posLargura, posicaoArray, i, j, k, l, temp, arrayR, arrayG, arrayB, inicio, fim) 
+	{	
+		arrayR = (int *)malloc(sizeOfArray * sizeof(int));
+		arrayG = (int *)malloc(sizeOfArray * sizeof(int));
+		arrayB = (int *)malloc(sizeOfArray * sizeof(int));
+
+		threadId = omp_get_thread_num();
+		numThreads = omp_get_num_threads();
+		printf("%d Partir de %d ate %d \n",threadId, threadId * (header.altura / numThreads),((header.altura / numThreads) * (threadId + 1)));
+
+		inicio = (threadId * (header.altura / numThreads));
+		fim = ((threadId + 1) * (header.altura / numThreads));
+		for (i = inicio; i < fim ; i++)
 		{
-			int posicaoArray = 0;
-
-			//Range eixo X
-			for (int k = -range; k <= range; k++)
+			for (j = 0; j < header.largura; j++)
 			{
-				int posAltura = i + k;
-				
-				//Range eixo Y
-				for (int l = -range; l <= range; l++)
+				posicaoArray = 0;
+
+				//Range eixo X
+				for (k = -range; k <= range; k++)
 				{
-					int posLargura = j + l;
+					posAltura = i + k;
+					
+					//Range eixo Y
+					for (l = -range; l <= range; l++)
+					{
+						posLargura = j + l;
 
-					if (posAltura < 0 || posLargura < 0 || posAltura >= header.altura || posLargura >= header.largura) {
-						arrayR[posicaoArray] = 0;
-						arrayG[posicaoArray] = 0;
-						arrayB[posicaoArray] = 0;
-						posicaoArray++;
-					} else {
-						arrayR[posicaoArray] = imgIn[posAltura][posLargura].red;
-						arrayG[posicaoArray] = imgIn[posAltura][posLargura].green;
-						arrayB[posicaoArray] = imgIn[posAltura][posLargura].blue;
-						posicaoArray++;
+						if (posAltura < 0 || posLargura < 0 || posAltura >= header.altura || posLargura >= header.largura) {
+							arrayR[posicaoArray] = 0;
+							arrayG[posicaoArray] = 0;
+							arrayB[posicaoArray] = 0;
+							posicaoArray++;
+						} else {
+							arrayR[posicaoArray] = imgIn[posAltura][posLargura].red;
+							arrayG[posicaoArray] = imgIn[posAltura][posLargura].green;
+							arrayB[posicaoArray] = imgIn[posAltura][posLargura].blue;
+							posicaoArray++;
+						}
+					}				
+				}		
+
+				for(l = 0 ; l < sizeOfArray ; l++) {
+					for(k = 0 ; k < sizeOfArray - 1 ; k++) {
+						if(arrayR[k] > arrayR[k + 1])
+						{
+							temp = arrayR[k];
+							arrayR[k] = arrayR[k + 1];
+							arrayR[k + 1] = temp;
+						}
 					}
-				}				
-			}		
+				}
 
-			imgOut[i][j].red   = ordenarVetor(arrayR, sizeOfArray)[mediana];
-			imgOut[i][j].green = ordenarVetor(arrayG, sizeOfArray)[mediana];
-			imgOut[i][j].blue  = ordenarVetor(arrayB, sizeOfArray)[mediana];
+				for(l = 0 ; l < sizeOfArray ; l++) {
+					for(k = 0 ; k < sizeOfArray - 1 ; k++) {
+						if(arrayG[k] > arrayG[k + 1])
+						{
+							temp = arrayG[k];
+							arrayG[k] = arrayG[k + 1];
+							arrayG[k + 1] = temp;
+						}
+					}
+				}
+
+				for(l = 0 ; l < sizeOfArray ; l++) {
+					for(k = 0 ; k < sizeOfArray - 1 ; k++) {
+						if(arrayB[k] > arrayB[k + 1])
+						{
+							temp = arrayB[k];
+							arrayB[k] = arrayB[k + 1];
+							arrayB[k + 1] = temp;
+						}
+					}
+				}
+
+				imgOut[i][j].red   = arrayR[mediana];
+				imgOut[i][j].green = arrayG[mediana];
+				imgOut[i][j].blue  = arrayB[mediana];
+			}
 		}
+		
+		free(arrayR);
+		free(arrayG);
+		free(arrayB);
 	}
-
-	free(arrayR);
-	free(arrayG);
-	free(arrayB);
-
+	
 	escreverArquivo(imgOut, header, fileOut);
 
 	fclose(fileIn);
